@@ -98,6 +98,20 @@ def concatenate_clips(
         raise VideoAssemblyError("Video concatenation timed out")
 
 
+def _find_korean_font_name() -> str:
+    """Find an available Korean font name for FFmpeg subtitles."""
+    candidates = [
+        ("NanumSquare", "/usr/share/fonts/truetype/nanum/NanumSquareB.ttf"),
+        ("NanumSquareRound", "/usr/share/fonts/truetype/nanum/NanumSquareRoundB.ttf"),
+        ("NanumGothic", "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf"),
+        ("Noto Sans CJK KR", "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"),
+    ]
+    for name, path in candidates:
+        if Path(path).exists():
+            return name
+    return "NanumGothic"
+
+
 def burn_subtitles(
     video_path: Path,
     srt_path: Path,
@@ -107,11 +121,12 @@ def burn_subtitles(
     """Burn subtitles into video."""
     # Escape special characters in path for ffmpeg filter
     srt_escaped = str(srt_path).replace("\\", "\\\\").replace(":", "\\:")
+    font_name = _find_korean_font_name()
 
     cmd = [
         "ffmpeg", "-y",
         "-i", str(video_path),
-        "-vf", f"subtitles='{srt_escaped}':force_style='FontSize={font_size},PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,MarginV=50'",
+        "-vf", f"subtitles='{srt_escaped}':force_style='FontName={font_name},FontSize={font_size},PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,MarginV=50'",
         "-c:v", "libx264",
         "-crf", str(settings.video_crf),
         "-c:a", "copy",

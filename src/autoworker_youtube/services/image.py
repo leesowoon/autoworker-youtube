@@ -10,24 +10,39 @@ from PIL import Image, ImageDraw, ImageFont
 
 def _get_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     """Try to load a Korean-supporting font."""
+    # (path, index) - index is needed for .ttc collection files
     font_candidates = [
-        "/usr/share/fonts/truetype/nanum/NanumSquareB.ttf",
-        "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf",
-        "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        # Nanum fonts (ttf - no index needed)
+        ("/usr/share/fonts/truetype/nanum/NanumSquareB.ttf", 0),
+        ("/usr/share/fonts/truetype/nanum/NanumSquareRoundB.ttf", 0),
+        ("/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf", 0),
+        ("/usr/share/fonts/truetype/nanum/NanumGothic.ttf", 0),
+        # Noto CJK (ttc - KR is typically index 4)
+        ("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", 4),
+        ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", 4),
+        # macOS
+        ("/System/Library/Fonts/AppleSDGothicNeo.ttc", 0),
+        # Windows
+        ("C:/Windows/Fonts/malgun.ttf", 0),
+        ("C:/Windows/Fonts/NanumGothic.ttf", 0),
+        # Fallback
+        ("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 0),
     ]
     # Also check project assets
     project_fonts = Path(__file__).parent.parent.parent.parent / "assets" / "fonts"
     if project_fonts.exists():
-        for f in project_fonts.glob("*.ttf"):
-            font_candidates.insert(0, str(f))
+        for f in sorted(project_fonts.glob("*.ttf")):
+            font_candidates.insert(0, (str(f), 0))
+        for f in sorted(project_fonts.glob("*.ttc")):
+            font_candidates.insert(0, (str(f), 0))
 
-    for font_path in font_candidates:
+    for font_path, index in font_candidates:
         try:
-            return ImageFont.truetype(font_path, size)
+            return ImageFont.truetype(font_path, size, index=index)
         except (OSError, IOError):
             continue
+
+    logger.warning("No Korean font found! Text will be broken. Install: apt install fonts-nanum")
     return ImageFont.load_default()
 
 
