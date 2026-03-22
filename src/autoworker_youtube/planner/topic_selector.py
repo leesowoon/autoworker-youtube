@@ -53,11 +53,11 @@ def _rank_topics(
     """Use LLM to rank topics by video suitability."""
     import json
 
-    import anthropic
-
     if not settings.anthropic_api_key:
-        # Without LLM, return top candidates as-is
+        # Without LLM (manual mode), return top candidates as-is
         return candidates[:max_topics]
+
+    import anthropic
 
     candidates_text = json.dumps(candidates[:30], ensure_ascii=False, indent=2)
     category_hint = f"\n선호 카테고리: {category}" if category else ""

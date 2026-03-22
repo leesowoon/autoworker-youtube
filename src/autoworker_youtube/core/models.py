@@ -48,6 +48,9 @@ class JobConfig(BaseModel):
     # Image generation
     image_provider: str | None = None  # dalle, stability, grok, whisk, none (auto if None)
 
+    # LLM mode: "api" (call Anthropic API) or "manual" (Claude Code fills JSON)
+    llm_mode: str = "manual"
+
     # Trending mode options
     region: str = "KR"
     category: str | None = None

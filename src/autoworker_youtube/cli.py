@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Optional
 
 import typer
@@ -13,6 +14,17 @@ app = typer.Typer(
     name="autoworker-youtube",
     help="Auto-generate videos from YouTube URLs or trending topics.",
 )
+
+MANUAL_PAUSE = "MANUAL_LLM_PAUSE"
+
+
+def _resolve_llm_mode(llm_mode: str) -> str:
+    """Resolve 'auto' llm_mode based on API key availability."""
+    if llm_mode == "auto":
+        if os.getenv("ANTHROPIC_API_KEY"):
+            return "api"
+        return "manual"
+    return llm_mode
 
 
 @app.command()
@@ -28,6 +40,7 @@ def generate(
     titles: int = typer.Option(3, "--titles", help="Number of title candidates to generate"),
     no_auto_title: bool = typer.Option(False, "--no-auto-title", help="Don't auto-select title (show candidates)"),
     image_provider: Optional[str] = typer.Option(None, "--image", "-i", help="Image provider: dalle, stability, grok, whisk, none"),
+    llm_mode: str = typer.Option("auto", "--llm-mode", help="LLM mode: api, manual, auto"),
 ):
     """Generate a video from one or more YouTube URLs."""
     if len(urls) == 1:
@@ -49,6 +62,7 @@ def generate(
         image_provider=image_provider,
         title_candidates=titles,
         auto_select_title=not no_auto_title,
+        llm_mode=_resolve_llm_mode(llm_mode),
     )
 
     _run_pipeline(config)
@@ -131,6 +145,7 @@ def auto(
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Output file path"),
     output_format: str = typer.Option("mp4", "--format", "-f", help="Output format: mp4 or capcut"),
     image_provider: Optional[str] = typer.Option(None, "--image", "-i", help="Image provider: dalle, stability, grok, whisk, none"),
+    llm_mode: str = typer.Option("auto", "--llm-mode", help="LLM mode: api, manual, auto"),
 ):
     """Auto-discover a trending topic and generate a video."""
     config = JobConfig(
@@ -144,6 +159,7 @@ def auto(
         category=category,
         topic=topic,
         image_provider=image_provider,
+        llm_mode=_resolve_llm_mode(llm_mode),
     )
 
     _run_pipeline(config)
@@ -155,6 +171,7 @@ def batch(
     video_type: str = typer.Option("product_intro", "--type", "-t"),
     duration: int = typer.Option(120, "--duration", "-d"),
     output_format: str = typer.Option("mp4", "--format", "-f", help="Output format: mp4 or capcut"),
+    llm_mode: str = typer.Option("auto", "--llm-mode", help="LLM mode: api, manual, auto"),
 ):
     """Batch generate videos from a file of YouTube URLs (like multi-channel)."""
     from pathlib import Path
@@ -178,6 +195,7 @@ def batch(
             video_type=VideoType(video_type),
             target_duration_sec=duration,
             output_format=output_format,
+            llm_mode=_resolve_llm_mode(llm_mode),
         )
 
         try:
@@ -192,7 +210,7 @@ def resume(
     job_id: str = typer.Argument(..., help="Job ID to resume"),
     stage: int = typer.Option(0, "--stage", "-s", help="Stage index to resume from (0-5)"),
 ):
-    """Resume a failed pipeline from a specific stage."""
+    """Resume a failed/paused pipeline from a specific stage."""
     import json
     from pathlib import Path
 
@@ -226,6 +244,7 @@ def _run_pipeline(config: JobConfig, from_stage: int = 0):
 
     typer.echo(f"\n Job ID: {config.job_id}")
     typer.echo(f" Mode: {config.input_mode.value}")
+    typer.echo(f" LLM: {config.llm_mode}")
     if config.youtube_url:
         typer.echo(f" URL: {config.youtube_url}")
     if config.youtube_urls:
@@ -236,8 +255,6 @@ def _run_pipeline(config: JobConfig, from_stage: int = 0):
         typer.echo(f" Topic: {config.topic}")
     typer.echo(f" Duration: {config.target_duration_sec}s")
     typer.echo(f" Format: {config.output_format}")
-    typer.echo(f" Comments: {'ON' if config.include_comments else 'OFF'}")
-    typer.echo(f" Title candidates: {config.title_candidates}")
     typer.echo("")
 
     pipeline = Pipeline(config)
@@ -260,6 +277,16 @@ def _run_pipeline(config: JobConfig, from_stage: int = 0):
                     typer.echo(f"   [{tc.get('score', 0)}] {tc['title']}{marker}")
         except Exception:
             pass
+
+    elif result.error and result.error.startswith(MANUAL_PAUSE):
+        # Manual LLM pause - not a failure
+        typer.echo(f"\n Pipeline paused - Claude Code LLM 처리 필요")
+        typer.echo(f" Workspace: {workspace}")
+        typer.echo(f"")
+        typer.echo(f" 다음 단계:")
+        typer.echo(f"   1. Claude Code에서 프롬프트 데이터를 읽고 결과 JSON 생성")
+        typer.echo(f"   2. 완료 후: autoworker resume {config.job_id} --stage 3")
+        typer.echo(f"      (s3도 완료된 경우: autoworker resume {config.job_id} --stage 3)")
     else:
         typer.echo(f"\n Pipeline failed: {result.error}")
         typer.echo(f" Resume with: autoworker resume {config.job_id}")

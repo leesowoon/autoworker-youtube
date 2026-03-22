@@ -12,6 +12,7 @@ from autoworker_youtube.stages.s4_assets import AssetStage
 from autoworker_youtube.stages.s5_assembly import AssemblyStage
 from autoworker_youtube.stages.s6_output import OutputStage
 
+MANUAL_PAUSE = "MANUAL_LLM_PAUSE"
 
 STAGE_CLASSES = [
     InputStage,
@@ -30,33 +31,47 @@ class Pipeline:
         self.config = config
         self.stages = [cls(config) for cls in STAGE_CLASSES]
 
-    def run(self, from_stage: int = 0) -> PipelineResult:
-        """Run the pipeline from a given stage index.
+    def run(self, from_stage: int = 0, to_stage: int | None = None) -> PipelineResult:
+        """Run the pipeline from/to given stage indices.
 
         Args:
-            from_stage: Stage index to start from (0-based). Useful for resuming.
+            from_stage: Stage index to start from (0-based).
+            to_stage: Stage index to stop after (inclusive). None = run all.
 
         Returns:
             PipelineResult with overall success/failure and per-stage results.
         """
         logger.info(f"═══ Pipeline starting (job={self.config.job_id}) ═══")
-        logger.info(f"Mode: {self.config.input_mode.value}")
+        logger.info(f"Mode: {self.config.input_mode.value} | LLM: {self.config.llm_mode}")
         if self.config.youtube_url:
             logger.info(f"URL: {self.config.youtube_url}")
         if self.config.topic:
             logger.info(f"Topic: {self.config.topic}")
 
         results: list[StageResult] = []
+        end_stage = to_stage if to_stage is not None else len(self.stages) - 1
 
         for i, stage in enumerate(self.stages):
             if i < from_stage:
                 logger.info(f"⏭ Skipping stage [{stage.name}]")
                 continue
+            if i > end_stage:
+                break
 
             result = stage.run()
             results.append(result)
 
             if not result.success:
+                # Check if this is a manual LLM pause (not a real failure)
+                if result.error and result.error.startswith(MANUAL_PAUSE):
+                    logger.info(f"⏸ Pipeline paused at [{stage.name}] - manual LLM needed")
+                    return PipelineResult(
+                        job_id=self.config.job_id,
+                        success=False,
+                        stages=results,
+                        error=result.error,
+                    )
+
                 logger.error(f"Pipeline failed at stage [{stage.name}]")
                 return PipelineResult(
                     job_id=self.config.job_id,

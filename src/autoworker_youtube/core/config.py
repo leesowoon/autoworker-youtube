@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     elevenlabs_api_key: str = ""
     news_api_key: str = ""
+    openai_api_key: str = ""
+    stability_api_key: str = ""
+    xai_api_key: str = ""
 
     # Paths
     workspace_dir: str = "./workspace"
