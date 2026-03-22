@@ -206,6 +206,69 @@ def batch(
 
 
 @app.command()
+def episode(
+    episode_file: str = typer.Argument(..., help="Episode JSON file path"),
+    output: Optional[str] = typer.Option(None, "--output", "-o", help="Output video path"),
+    no_animate: bool = typer.Option(False, "--no-animate", help="Skip Grok video animation"),
+    voice: str = typer.Option("ko-KR-SunHiNeural", "--voice", "-v", help="TTS voice"),
+    voice_rate: str = typer.Option("-15%", "--rate", help="TTS speed (e.g. -15%, +0%)"),
+    assets_dir: Optional[str] = typer.Option(None, "--assets", help="Character sheets directory"),
+):
+    """Generate a Bori Universe episode from an episode JSON file."""
+    from pathlib import Path
+
+    from autoworker_youtube.universe.episode import generate_episode
+    from autoworker_youtube.universe.world import BoriUniverse
+
+    ep_path = Path(episode_file)
+    if not ep_path.exists():
+        typer.echo(f"Episode file not found: {episode_file}")
+        raise typer.Exit(1)
+
+    import json
+    with open(ep_path, encoding="utf-8") as f:
+        ep_data = json.load(f)
+
+    title = ep_data.get("title", "Untitled")
+    scenes = ep_data.get("scenes", [])
+    typer.echo(f"\n Episode: {title}")
+    typer.echo(f" Scenes: {len(scenes)}")
+    typer.echo(f" Animate: {'OFF' if no_animate else 'ON'}")
+    typer.echo(f" Voice: {voice} ({voice_rate})")
+    typer.echo("")
+
+    universe = BoriUniverse(
+        assets_dir=Path(assets_dir) if assets_dir else None
+    )
+
+    work_dir = Path(f"workspace/episodes/{_safe_ep_name(title)}")
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    out_path = Path(output) if output else None
+    result = generate_episode(
+        episode_data=ep_data,
+        output_dir=work_dir,
+        output_path=out_path,
+        universe=universe,
+        animate=not no_animate,
+        voice=voice,
+        voice_rate=voice_rate,
+    )
+
+    if result:
+        typer.echo(f"\n Episode generated: {result}")
+    else:
+        typer.echo(f"\n Episode generation failed")
+        raise typer.Exit(1)
+
+
+def _safe_ep_name(text: str) -> str:
+    import re
+    safe = re.sub(r'[^\w\s가-힣-]', '', text)
+    return safe.strip().replace(' ', '_')[:30]
+
+
+@app.command()
 def resume(
     job_id: str = typer.Argument(..., help="Job ID to resume"),
     stage: int = typer.Option(0, "--stage", "-s", help="Stage index to resume from (0-5)"),

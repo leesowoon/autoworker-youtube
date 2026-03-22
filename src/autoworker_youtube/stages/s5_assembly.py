@@ -1,4 +1,10 @@
-"""Stage 5: Video assembly - combine all assets into final video or CapCut project."""
+"""Stage 5: Video assembly - combine all assets into final video or CapCut project.
+
+Supports:
+  - Ken Burns motion effects on still images (default)
+  - AI-generated video clips (Grok) when available
+  - Static images as fallback
+"""
 
 from __future__ import annotations
 
@@ -26,6 +32,9 @@ class AssemblyStage(StageBase):
         audio_durations = s4_data.get("audio_durations", [])
         title = s3_data["script"].get("title", "Untitled")
 
+        # Check for AI-generated video clips
+        video_clips = s4_data.get("video_clips", {})  # {scene_id: path}
+
         if self.config.output_format == "capcut":
             return self._assemble_capcut(
                 scenes, narration_files, image_files, subtitle_file,
@@ -34,7 +43,7 @@ class AssemblyStage(StageBase):
         else:
             return self._assemble_mp4(
                 scenes, narration_files, image_files, subtitle_file,
-                audio_durations, title,
+                audio_durations, title, video_clips,
             )
 
     def _assemble_mp4(
@@ -45,8 +54,10 @@ class AssemblyStage(StageBase):
         subtitle_file: Path | None,
         audio_durations: list[float],
         title: str,
+        video_clips: dict = None,
     ) -> StageResult:
-        """Assemble into MP4 video."""
+        """Assemble into MP4 video with motion effects and AI video support."""
+        video_clips = video_clips or {}
         assembly_dir = self.get_subdir("assembly")
         output_dir = self.get_subdir("output")
 
@@ -56,34 +67,51 @@ class AssemblyStage(StageBase):
                 stage_name=self.name, success=False, error="No assets to assemble"
             )
 
-        # 1. Create individual scene clips
-        logger.info(f"Creating {min_count} scene clips...")
+        # Create individual scene clips
+        logger.info(f"Creating {min_count} scene clips with motion effects...")
         clip_paths = []
         for i in range(min_count):
             clip_path = assembly_dir / f"clip_{i:03d}.mp4"
             duration = audio_durations[i] if i < len(audio_durations) else None
+            scene = scenes[i] if i < len(scenes) else {}
+            scene_id = scene.get("scene_id", i + 1)
 
-            video.create_scene_clip(
-                image_path=image_files[i],
-                audio_path=narration_files[i],
-                output_path=clip_path,
-                duration=duration,
-                resolution=self.config.resolution,
-            )
+            # Check if we have an AI video clip for this scene
+            ai_video_path = video_clips.get(str(scene_id))
+            if ai_video_path and Path(ai_video_path).exists():
+                logger.info(f"  Scene {scene_id}: using AI video clip")
+                video.create_scene_clip_from_video(
+                    video_path=Path(ai_video_path),
+                    audio_path=narration_files[i],
+                    output_path=clip_path,
+                    duration=duration,
+                    resolution=self.config.resolution,
+                )
+            else:
+                # Use image with Ken Burns motion
+                video.create_scene_clip(
+                    image_path=image_files[i],
+                    audio_path=narration_files[i],
+                    output_path=clip_path,
+                    duration=duration,
+                    resolution=self.config.resolution,
+                    motion=True,
+                )
+
             clip_paths.append(clip_path)
 
-        # 2. Concatenate all clips
+        # Concatenate all clips
         raw_video = assembly_dir / "raw_concat.mp4"
         video.concatenate_clips(clip_paths, raw_video)
 
-        # 3. Burn subtitles
+        # Burn subtitles
         final_video = output_dir / "final.mp4"
         if subtitle_file and subtitle_file.exists():
             video.burn_subtitles(raw_video, subtitle_file, final_video)
         else:
             shutil.copy2(raw_video, final_video)
 
-        # 4. Add BGM if available
+        # Add BGM if available
         bgm_dir = Path(self.workspace).parent.parent / "assets" / "bgm"
         bgm_files = list(bgm_dir.glob("*.mp3")) if bgm_dir.exists() else []
         if bgm_files:
