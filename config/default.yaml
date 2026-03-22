@@ -1,0 +1,36 @@
+pipeline:
+  max_retries: 3
+  timeout_per_stage_sec: 300
+
+video:
+  resolution: [1920, 1080]
+  fps: 30
+  codec: libx264
+  crf: 23
+  format: mp4
+
+audio:
+  sample_rate: 44100
+  narration_format: mp3
+  bgm_volume_db: -15
+
+subtitle:
+  font: NanumSquareB
+  font_size: 42
+  color: "#FFFFFF"
+  outline_color: "#000000"
+  outline_width: 2
+  position: bottom
+  margin_v: 50
+
+llm:
+  provider: anthropic
+  model: claude-sonnet-4-20250514
+  max_tokens: 4096
+  temperature: 0.7
+
+tts:
+  provider: edge-tts
+  voice: ko-KR-SunHiNeural
+  rate: "+0%"
+  volume: "+0%"
